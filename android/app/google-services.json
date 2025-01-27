@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "1004265474672",
+    "firebase_url": "https://smart-parking-capstone-design-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "smart-parking-capstone-design",
+    "storage_bucket": "smart-parking-capstone-design.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1004265474672:android:b680f9e5ed41bce62482b5",
+        "android_client_info": {
+          "package_name": "com.example.smartparking"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBEo4Bs12OJToWpQt3HFcMPpAgtodwG7vQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
