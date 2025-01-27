@@ -206,7 +206,6 @@ class _ReservationPageState extends State<ReservationPage> {
     }
   }
 
-// Helper function to parse DateTime
   DateTime _parseDateTime(String time, String date) {
     final dateParts = date.split('-'); // Format: DD-MM-YYYY
     final timeParts = time.split(' '); // Format: HH:MM AM/PM

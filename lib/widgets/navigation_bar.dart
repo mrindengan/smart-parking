@@ -80,6 +80,7 @@ class NavigationBar extends StatelessWidget {
 
   Future<void> _performCheckOut(BuildContext context, String userId) async {
     try {
+      // Reference to the user node
       final userRef = FirebaseDatabase.instance.ref('users/$userId');
       final reservationsRef =
           FirebaseDatabase.instance.ref('reservations/$userId');
@@ -90,14 +91,17 @@ class NavigationBar extends StatelessWidget {
         throw Exception('User data not found.');
       }
 
+      // Extract user data
       final userData = Map<String, dynamic>.from(userSnapshot.value as Map);
-      final currentSlot = userData['currentSlot'] as String?;
-      final isCheckedIn = userData['isCheckedIn'] as bool? ?? false;
+      final String? currentSlot = userData['currentSlot'];
+      final bool isCheckedIn = userData['isCheckedIn'] ?? false;
 
+      // Validation: Ensure user is checked in and has a valid slot
       if (!isCheckedIn || currentSlot == null) {
         throw Exception('No active check-in or reservation found.');
       }
 
+      // Reference to the parking slot node
       final slotRef =
           FirebaseDatabase.instance.ref('parkingSlots/$currentSlot');
       final slotSnapshot = await slotRef.get();
@@ -106,7 +110,7 @@ class NavigationBar extends StatelessWidget {
         throw Exception('Parking slot not found.');
       }
 
-      // Find and handle the reservation
+      // Check for active reservations
       final reservationsSnapshot = await reservationsRef.get();
       bool isReservationHandled = false;
 
@@ -114,38 +118,31 @@ class NavigationBar extends StatelessWidget {
         final reservations =
             Map<String, dynamic>.from(reservationsSnapshot.value as Map);
 
+        // Locate the active reservation associated with the current slot
         final activeReservationEntry = reservations.entries.firstWhere(
-          (entry) {
-            final reservationData = Map<String, dynamic>.from(entry.value);
-            final String? checkInTime = reservationData['checkIn'];
-            final String? date = reservationData['date'];
-
-            final DateTime? parsedCheckIn = _parseDateTime(checkInTime, date);
-
-            return reservationData['slot'] == currentSlot &&
-                reservationData['status'] == 'CheckedIn' &&
-                parsedCheckIn != null &&
-                DateTime.now().isAfter(parsedCheckIn);
-          },
+          (entry) => entry.value['slot'] == currentSlot,
           orElse: () => MapEntry('', {}),
         );
 
         if (activeReservationEntry.key.isNotEmpty) {
-          final reservationId = activeReservationEntry.key;
+          final String reservationId = activeReservationEntry.key;
           final reservationData = activeReservationEntry.value;
 
-          // Move reservation to history
+          // Move reservation to history node
           await historyRef.child(reservationId).set({
             ...reservationData,
             'status': 'CheckedOut',
             'checkOut': DateTime.now().toIso8601String(),
           });
 
-          // Remove from reservations node
+          // Remove reservation from reservations node
           await reservationsRef.child(reservationId).remove();
 
+          // Remove reservation from upcomingReservations under the parking slot node
+          await slotRef.child('upcomingReservations/$reservationId').remove();
+
           print(
-              'DEBUG: Reservation $reservationId moved to history and removed.');
+              'DEBUG: Reservation $reservationId moved to history and removed from reservations and upcomingReservations.');
           isReservationHandled = true;
         }
       }
@@ -173,15 +170,18 @@ class NavigationBar extends StatelessWidget {
         'currentSlot': null,
       });
 
+      print('DEBUG: Parking slot $currentSlot marked as available.');
+      print('DEBUG: User $userId state updated.');
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Checked out successfully!')),
       );
       Navigator.pushReplacementNamed(context, '/dashboard');
     } catch (e, stackTrace) {
-      print('ERROR during check out: $e');
+      print('ERROR during check-out: $e');
       print('STACK TRACE: $stackTrace');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error during check out: $e')),
+        SnackBar(content: Text('Error during check-out: $e')),
       );
     }
   }

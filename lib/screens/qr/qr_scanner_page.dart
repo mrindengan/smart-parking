@@ -175,6 +175,18 @@ class _QRScannerPageState extends State<QRScannerPage> {
 
             // Remove the reservation from upcomingReservations
             await slotRef.child('upcomingReservations/$reservationId').remove();
+
+            // Update the reservation status to CheckedIn in the reservations node
+            await reservationRef.child(reservationId).update({
+              'status': 'CheckedIn', // Mark the reservation as checked in
+              'checkIn': DateTime.now()
+                  .toIso8601String(), // Log the actual check-in time
+            });
+
+            print(
+                'DEBUG: Reservation $reservationId status updated to CheckedIn.');
+          } else {
+            print('DEBUG: No matching upcoming reservation found.');
           }
         }
       }
@@ -191,14 +203,6 @@ class _QRScannerPageState extends State<QRScannerPage> {
         'reservedBy': isReservedUser ? null : userId,
       });
 
-      // Update reservation status for reserved users
-      if (isReservedUser && reservationId != null) {
-        await reservationRef.child(reservationId).update({
-          'status': 'CheckedIn',
-          'checkIn': DateTime.now().toIso8601String(),
-        });
-      }
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -208,8 +212,9 @@ class _QRScannerPageState extends State<QRScannerPage> {
         );
         Navigator.pushReplacementNamed(context, '/dashboard');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('Error during check-in: $e');
+      print('Stack Trace: $stackTrace');
       _showError('Error during check-in: $e');
     }
   }

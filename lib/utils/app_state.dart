@@ -368,10 +368,12 @@ class AppState with ChangeNotifier {
           print('Current Time: $now');
           print('-----------------------');
 
-          // Active Reservation Logic
-          if (now.isAfter(checkInTime) && now.isBefore(checkOutTime)) {
+          // Check if the slot should be marked as unavailable at check-in time
+          if (now.isAtSameMomentAs(checkInTime) ||
+              now.isAfter(checkInTime) && now.isBefore(checkOutTime)) {
             slotStatus[slotId] = true; // Mark slot as occupied
-            print('Slot $slotId is marked as occupied (Active Reservation).');
+            print(
+                'Slot $slotId is marked as occupied (Check-In Time Reached).');
           } else if (now.isAfter(checkOutTime)) {
             // Past Reservation Logic
             slotStatus[slotId] = false; // Mark slot as available
