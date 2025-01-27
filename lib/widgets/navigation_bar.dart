@@ -52,32 +52,6 @@ class NavigationBar extends StatelessWidget {
     );
   }
 
-  DateTime? _parseDateTime(String? time, String? date) {
-    if (time == null || date == null) {
-      print('DEBUG: Invalid time or date. Returning null.');
-      return null;
-    }
-
-    try {
-      final dateParts = date.split('-'); // Format: DD-MM-YYYY
-      final timeParts = time.split(':'); // Format: HH:MM AM/PM
-      final hour = int.parse(timeParts[0]);
-      final minute = int.parse(timeParts[1].split(' ')[0]);
-      final isPM = time.toUpperCase().contains('PM');
-
-      return DateTime(
-        int.parse(dateParts[2]), // Year
-        int.parse(dateParts[1]), // Month
-        int.parse(dateParts[0]), // Day
-        isPM ? (hour % 12) + 12 : hour,
-        minute,
-      );
-    } catch (e) {
-      print('Error parsing date/time: $e');
-      return null;
-    }
-  }
-
   Future<void> _performCheckOut(BuildContext context, String userId) async {
     try {
       // Reference to the user node

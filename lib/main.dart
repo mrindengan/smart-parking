@@ -1,5 +1,3 @@
-import 'package:firebase_database/firebase_database.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -22,9 +20,6 @@ Future<void> main() async {
     // Initialize Firebase
     await Firebase.initializeApp();
     print('Firebase initialized.');
-
-    // Initialize Firebase Messaging
-    await _initializeFirebaseMessaging();
   } catch (e) {
     print('Error during initialization: $e');
   }
@@ -84,60 +79,4 @@ class SmartParkingApp extends StatelessWidget {
       },
     );
   }
-}
-
-// Initialize Firebase Messaging
-Future<void> _initializeFirebaseMessaging() async {
-  final FirebaseMessaging messaging = FirebaseMessaging.instance;
-
-  // Request notification permissions
-  NotificationSettings settings = await messaging.requestPermission(
-    alert: true,
-    badge: true,
-    sound: true,
-  );
-
-  print('Notification permission status: ${settings.authorizationStatus}');
-
-  if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-    try {
-      // Retrieve FCM Token
-      String? token = await messaging.getToken();
-      if (token != null) {
-        print('FCM Token: $token');
-        // Save token to Firebase (optional)
-        final user = FirebaseAuth.instance.currentUser;
-        if (user != null) {
-          final DatabaseReference dbRef = FirebaseDatabase.instance.ref();
-          await dbRef.child('users/${user.uid}').update({'fcmToken': token});
-          print('FCM Token saved to database.');
-        }
-      } else {
-        print('Failed to retrieve FCM token.');
-      }
-    } catch (e) {
-      print('Error retrieving FCM token: $e');
-    }
-  } else {
-    print('User denied notification permissions.');
-  }
-
-  // Handle foreground notifications
-  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-    print('Foreground notification received: ${message.notification?.body}');
-  });
-
-  // Handle background notifications
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-  // Handle notification clicks
-  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-    print('Notification clicked: ${message.data}');
-  });
-}
-
-// Background notification handler
-@pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print('Handling background message: ${message.messageId}');
 }

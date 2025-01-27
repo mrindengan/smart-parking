@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -11,7 +10,6 @@ class AppState with ChangeNotifier {
     _initializeAuthStateListener();
     _initializeParkingSlotListener();
     _initializeReservationListener();
-    _initializeMessaging();
     _startPeriodicSlotUpdates();
     listenToCheckInStatus();
   }
@@ -31,7 +29,6 @@ class AppState with ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   File? _profileImage;
   final _profileImageController = StreamController<File?>.broadcast();
 
@@ -201,80 +198,6 @@ class AppState with ChangeNotifier {
     await _auth.signOut();
   }
 
-  // Initialize Firebase Messaging
-  void _initializeMessaging() async {
-    print('Initializing Firebase Messaging...');
-
-    // Request notification permissions
-    NotificationSettings settings = await _messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-
-    print('Notification permission status: ${settings.authorizationStatus}');
-
-    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      try {
-        // Retrieve the FCM token
-        String? token = await _messaging.getToken();
-        if (token != null) {
-          print('FCM Token: $token');
-          _saveTokenToDatabase(token); // Save token to Firebase
-        } else {
-          print('Failed to retrieve FCM token.');
-        }
-      } catch (e) {
-        print('Error retrieving FCM token: $e');
-      }
-    } else {
-      print('Notification permissions denied.');
-    }
-
-    // Listen for token refresh
-    _messaging.onTokenRefresh.listen((newToken) {
-      print('FCM Token refreshed: $newToken');
-      _saveTokenToDatabase(newToken); // Update token in Firebase
-    });
-
-    // Handle foreground notifications
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      print('Foreground notification received: ${message.notification?.body}');
-    });
-
-    // Handle notification clicks
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      print('Notification clicked: ${message.data}');
-    });
-
-    // Register background handler
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  }
-
-  // Save FCM token to Firebase Realtime Database
-  Future<void> _saveTokenToDatabase(String token) async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) {
-        print('No authenticated user found to associate token.');
-        return;
-      }
-
-      final userId = user.uid;
-      await _dbRef.child('users/$userId').update({'fcmToken': token});
-      print('FCM token saved to Firebase for user: $userId');
-    } catch (e) {
-      print('Error saving FCM token to Firebase: $e');
-    }
-  }
-
-  // Background message handler
-  @pragma('vm:entry-point')
-  static Future<void> _firebaseMessagingBackgroundHandler(
-      RemoteMessage message) async {
-    print('Handling background message: ${message.messageId}');
-  }
-
   // Listen to Firebase Authentication State
   void _initializeAuthStateListener() {
     _auth.authStateChanges().listen((user) {
@@ -336,11 +259,9 @@ class AppState with ChangeNotifier {
     });
   }
 
-  // Update Slots Based on Reservations
   void _updateSlotsBasedOnReservations(Map<String, dynamic> reservations) {
     final now = DateTime.now();
-    final Map<String, bool> slotStatus =
-        {}; // Tracks the current status for each slot
+    final Map<String, bool> slotStatus = {};
 
     for (final userEntry in reservations.entries) {
       final userReservations = Map<String, dynamic>.from(userEntry.value);
@@ -368,9 +289,9 @@ class AppState with ChangeNotifier {
           print('Current Time: $now');
           print('-----------------------');
 
-          // Check if the slot should be marked as unavailable at check-in time
+          // **Slot Availability Logic**
           if (now.isAtSameMomentAs(checkInTime) ||
-              now.isAfter(checkInTime) && now.isBefore(checkOutTime)) {
+              (now.isAfter(checkInTime) && now.isBefore(checkOutTime))) {
             slotStatus[slotId] = true; // Mark slot as occupied
             print(
                 'Slot $slotId is marked as occupied (Check-In Time Reached).');
