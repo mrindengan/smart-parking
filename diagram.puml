@@ -1,0 +1,362 @@
+@startuml
+set namespaceSeparator ::
+
+class "smartparking::firebase_options.dart::DefaultFirebaseOptions" {
+  {static} +FirebaseOptions android
+  {static} +FirebaseOptions currentPlatform
+}
+
+"smartparking::firebase_options.dart::DefaultFirebaseOptions" o-- "firebase_core_platform_interface::firebase_core_platform_interface.dart::FirebaseOptions"
+
+class "smartparking::main.dart::SmartParkingApp" {
+  +Widget build()
+}
+
+"flutter::src::widgets::framework.dart::StatelessWidget" <|-- "smartparking::main.dart::SmartParkingApp"
+
+class "smartparking::models::slot_layout_config.dart::SlotLayoutConfig" {
+  +double topOffset
+  +double leftShiftFactor
+  +double distanceReductionFactor
+  +double horizontalSpacingFactor
+  +double buttonReductionFactor
+}
+
+class "smartparking::screens::active_reservations_page.dart::ActiveReservationsPage" {
+  +_ActiveReservationsPageState createState()
+}
+
+"flutter::src::widgets::framework.dart::StatefulWidget" <|-- "smartparking::screens::active_reservations_page.dart::ActiveReservationsPage"
+
+class "smartparking::screens::active_reservations_page.dart::_ActiveReservationsPageState" {
+  +bool isLoading
+  +Map<String, dynamic>? regularCheckIn
+  +List<Map<String, dynamic>> reservations
+  -FirebaseAuth _auth
+  -DatabaseReference _dbRef
+  +void initState()
+  -void _listenToReservations()
+  -dynamic _showExtendDialog()
+  -dynamic _isSlotAvailable()
+  -void _listenToRegularCheckIn()
+  -dynamic _extendReservation()
+  -dynamic _checkReservationConflict()
+  -dynamic _cancelReservation()
+  -DateTime? _parseDateTime()
+  -Widget _buildReservationCard()
+  +Widget build()
+}
+
+"smartparking::screens::active_reservations_page.dart::_ActiveReservationsPageState" o-- "firebase_auth::firebase_auth.dart::FirebaseAuth"
+"smartparking::screens::active_reservations_page.dart::_ActiveReservationsPageState" o-- "firebase_database::firebase_database.dart::DatabaseReference"
+"flutter::src::widgets::framework.dart::State" <|-- "smartparking::screens::active_reservations_page.dart::_ActiveReservationsPageState"
+
+class "smartparking::screens::dashboard_page.dart::DashboardPage" {
+  +_DashboardPageState createState()
+}
+
+"flutter::src::widgets::framework.dart::StatefulWidget" <|-- "smartparking::screens::dashboard_page.dart::DashboardPage"
+
+class "smartparking::screens::dashboard_page.dart::_DashboardPageState" {
+  +Map<String, dynamic>? activeReservation
+  +int availableSlots
+  +String? firstName
+  +int occupiedSlots
+  +File? profileImage
+  +bool showNotification
+  +int totalSlots
+  +void initState()
+  -void _listenToUserName()
+  -void _listenToUserInfo()
+  -dynamic _loadProfileImage()
+  -void _listenToActiveReservation()
+  -void _listenToSlotData()
+  -bool _shouldShowNotification()
+  -Widget _buildNotificationBanner()
+  -String _getReadableSlotName()
+  -DateTime? _parseDateTime()
+  -Widget _buildMetricCard()
+  +Widget build()
+}
+
+"smartparking::screens::dashboard_page.dart::_DashboardPageState" o-- "dart::io::File"
+"flutter::src::widgets::framework.dart::State" <|-- "smartparking::screens::dashboard_page.dart::_DashboardPageState"
+
+class "smartparking::screens::history_page.dart::HistoryPage" {
+  +_HistoryPageState createState()
+}
+
+"flutter::src::widgets::framework.dart::StatefulWidget" <|-- "smartparking::screens::history_page.dart::HistoryPage"
+
+class "smartparking::screens::history_page.dart::_HistoryPageState" {
+  -FirebaseAuth _auth
+  -DatabaseReference _dbRef
+  +List<Map<String, dynamic>> reservationHistory
+  +List<Map<String, dynamic>> regularCheckOutHistory
+  +bool isLoading
+  +void initState()
+  -void _listenToHistory()
+  -DateTime? _parseDateTime()
+  +Widget build()
+  -Widget _buildReservationCard()
+  -Widget _buildRegularCheckOutCard()
+  -String _formatDateTime()
+  -Widget _buildStatusTag()
+  -String _getReadableSlotName()
+}
+
+"smartparking::screens::history_page.dart::_HistoryPageState" o-- "firebase_auth::firebase_auth.dart::FirebaseAuth"
+"smartparking::screens::history_page.dart::_HistoryPageState" o-- "firebase_database::firebase_database.dart::DatabaseReference"
+"flutter::src::widgets::framework.dart::State" <|-- "smartparking::screens::history_page.dart::_HistoryPageState"
+
+class "smartparking::screens::login_page.dart::LoginPage" {
+  +_LoginPageState createState()
+}
+
+"flutter::src::widgets::framework.dart::StatefulWidget" <|-- "smartparking::screens::login_page.dart::LoginPage"
+
+class "smartparking::screens::login_page.dart::_LoginPageState" {
+  -TextEditingController _emailController
+  -GlobalKey<FormState> _formKey
+  -bool _isLoading
+  -TextEditingController _passwordController
+  +void dispose()
+  -void _clearFieldsAndResetForm()
+  -dynamic _login()
+  +Widget build()
+}
+
+"smartparking::screens::login_page.dart::_LoginPageState" o-- "flutter::src::widgets::editable_text.dart::TextEditingController"
+"smartparking::screens::login_page.dart::_LoginPageState" o-- "flutter::src::widgets::framework.dart::GlobalKey<FormState>"
+"flutter::src::widgets::framework.dart::State" <|-- "smartparking::screens::login_page.dart::_LoginPageState"
+
+class "smartparking::screens::map_page.dart::MapPage" {
+  +_MapPageState createState()
+}
+
+"flutter::src::widgets::framework.dart::StatefulWidget" <|-- "smartparking::screens::map_page.dart::MapPage"
+
+class "smartparking::screens::map_page.dart::_MapPageState" {
+  +DatabaseReference dbRef
+  +bool isLoading
+  +Set<String> occupiedSlots
+  +List<String> slotA
+  +List<String> slotB
+  +StreamSubscription<dynamic>? slotSubscription
+  +void dispose()
+  +void initState()
+  -void _listenToSlotChanges()
+  -Widget _buildLegendItem()
+  -List<Widget> _buildSlotOverlay()
+  -Widget _buildSlot()
+  +Widget build()
+}
+
+"smartparking::screens::map_page.dart::_MapPageState" o-- "firebase_database::firebase_database.dart::DatabaseReference"
+"smartparking::screens::map_page.dart::_MapPageState" o-- "dart::async::StreamSubscription<dynamic>"
+"flutter::src::widgets::framework.dart::State" <|-- "smartparking::screens::map_page.dart::_MapPageState"
+
+class "smartparking::screens::profile_page.dart::ProfilePage" {
+  +_ProfilePageState createState()
+}
+
+"flutter::src::widgets::framework.dart::StatefulWidget" <|-- "smartparking::screens::profile_page.dart::ProfilePage"
+
+class "smartparking::screens::profile_page.dart::_ProfilePageState" {
+  +AppState appState
+  +User? currentUser
+  +String? email
+  +String? name
+  +String? phoneNumber
+  +File? profileImage
+  +String? studentId
+  -FirebaseAuth _auth
+  -DatabaseReference _dbRef
+  +void initState()
+  +dynamic requestMediaPermission()
+  -void _logout()
+  -dynamic _fetchUserData()
+  -dynamic _showEditDialog()
+  -dynamic _updateUserData()
+  -Widget _buildProfileField()
+  +Widget build()
+}
+
+"smartparking::screens::profile_page.dart::_ProfilePageState" o-- "smartparking::utils::app_state.dart::AppState"
+"smartparking::screens::profile_page.dart::_ProfilePageState" o-- "firebase_auth::firebase_auth.dart::User"
+"smartparking::screens::profile_page.dart::_ProfilePageState" o-- "dart::io::File"
+"smartparking::screens::profile_page.dart::_ProfilePageState" o-- "firebase_auth::firebase_auth.dart::FirebaseAuth"
+"smartparking::screens::profile_page.dart::_ProfilePageState" o-- "firebase_database::firebase_database.dart::DatabaseReference"
+"flutter::src::widgets::framework.dart::State" <|-- "smartparking::screens::profile_page.dart::_ProfilePageState"
+
+class "smartparking::screens::qr::qr_scanner_page.dart::QRScannerPage" {
+  +_QRScannerPageState createState()
+}
+
+"flutter::src::widgets::framework.dart::StatefulWidget" <|-- "smartparking::screens::qr::qr_scanner_page.dart::QRScannerPage"
+
+class "smartparking::screens::qr::qr_scanner_page.dart::_QRScannerPageState" {
+  +bool isProcessing
+  +void dispose()
+  -void _showError()
+  -dynamic _processQRCode()
+  -dynamic _handleCheckIn()
+  -DateTime? _parseDateTime()
+  +Widget build()
+}
+
+"flutter::src::widgets::framework.dart::State" <|-- "smartparking::screens::qr::qr_scanner_page.dart::_QRScannerPageState"
+
+class "smartparking::screens::register_page.dart::RegisterPage" {
+  +_RegisterPageState createState()
+}
+
+"flutter::src::widgets::framework.dart::StatefulWidget" <|-- "smartparking::screens::register_page.dart::RegisterPage"
+
+class "smartparking::screens::register_page.dart::_RegisterPageState" {
+  +bool hasLowercase
+  +bool hasNumber
+  +bool hasSpecialCharacter
+  +bool hasUppercase
+  +bool isTyping
+  -TextEditingController _confirmPasswordController
+  -TextEditingController _emailController
+  -GlobalKey<FormState> _formKey
+  -bool _isLoading
+  -TextEditingController _nameController
+  -TextEditingController _passwordController
+  -void _validatePassword()
+  -bool _areAllRequirementsMet()
+  -dynamic _register()
+  -Widget _buildRequirementRow()
+  +Widget build()
+}
+
+"smartparking::screens::register_page.dart::_RegisterPageState" o-- "flutter::src::widgets::editable_text.dart::TextEditingController"
+"smartparking::screens::register_page.dart::_RegisterPageState" o-- "flutter::src::widgets::framework.dart::GlobalKey<FormState>"
+"flutter::src::widgets::framework.dart::State" <|-- "smartparking::screens::register_page.dart::_RegisterPageState"
+
+class "smartparking::screens::reservation_page.dart::ReservationPage" {
+  +String selectedSlot
+  +_ReservationPageState createState()
+}
+
+"flutter::src::widgets::framework.dart::StatefulWidget" <|-- "smartparking::screens::reservation_page.dart::ReservationPage"
+
+class "smartparking::screens::reservation_page.dart::_ReservationPageState" {
+  +TimeOfDay? checkInTime
+  +TimeOfDay? checkOutTime
+  +Duration? parkingDuration
+  +DateTime? selectedDate
+  -dynamic _pickDate()
+  -dynamic _pickTime()
+  -void _calculateDuration()
+  -dynamic _saveReservation()
+  -DateTime _parseDateTime()
+  -void _showConfirmationDialog()
+  -String _getDayName()
+  -String _getReadableSlotName()
+  +Widget build()
+}
+
+"smartparking::screens::reservation_page.dart::_ReservationPageState" o-- "flutter::src::material::time.dart::TimeOfDay"
+"flutter::src::widgets::framework.dart::State" <|-- "smartparking::screens::reservation_page.dart::_ReservationPageState"
+
+class "smartparking::utils::app_state.dart::AppState" {
+  +User? currentUser
+  +bool isCheckIn
+  +bool isLoggedIn
+  +int? lastUpdated
+  +Map<String, Map<String, dynamic>> parkingSlots
+  +Timer? periodicTimer
+  -FirebaseAuth _auth
+  -DatabaseReference _dbRef
+  -File? _profileImage
+  -StreamController<File?> _profileImageController
+  +Stream<File?> profileImageStream
+  +File? profileImage
+  +void dispose()
+  +void listenToCheckInStatus()
+  +dynamic updateCheckInStatus()
+  +dynamic register()
+  +dynamic login()
+  +dynamic logout()
+  -void _initializeAuthStateListener()
+  -void _initializeParkingSlotListener()
+  -void _initializeReservationListener()
+  -void _startPeriodicSlotUpdates()
+  -dynamic _processReservationsAndUpdateSlots()
+  -dynamic _archiveReservationAndUpdateSlot()
+  -DateTime? _parseDateTime()
+}
+
+"smartparking::utils::app_state.dart::AppState" o-- "firebase_auth::firebase_auth.dart::User"
+"smartparking::utils::app_state.dart::AppState" o-- "dart::async::Timer"
+"smartparking::utils::app_state.dart::AppState" o-- "firebase_auth::firebase_auth.dart::FirebaseAuth"
+"smartparking::utils::app_state.dart::AppState" o-- "firebase_database::firebase_database.dart::DatabaseReference"
+"smartparking::utils::app_state.dart::AppState" o-- "dart::io::File"
+"smartparking::utils::app_state.dart::AppState" o-- "dart::async::StreamController<File>"
+"smartparking::utils::app_state.dart::AppState" o-- "dart::async::Stream<File>"
+"flutter::src::foundation::change_notifier.dart::ChangeNotifier" <|-- "smartparking::utils::app_state.dart::AppState"
+
+class "smartparking::utils::notifications_manager.dart::NotificationManager" {
+  {static} +void initialize()
+  {static} +dynamic onNotificationCreated()
+  {static} +dynamic handleNotificationAction()
+  {static} +dynamic handleNotificationDisplayed()
+  {static} +dynamic handleNotificationDismissed()
+  {static} +dynamic scheduleNotification()
+  {static} +dynamic cancelNotification()
+  {static} +dynamic cancelAllNotifications()
+  {static} +dynamic areNotificationsAllowed()
+  {static} +dynamic requestPermissionsIfNeeded()
+  {static} +dynamic getScheduledNotifications()
+  {static} +void handleCheckInReminders()
+  {static} +dynamic handleMissedCheckIns()
+  {static} +void handleCheckOutReminders()
+  {static} +dynamic handleOverdueCheckOuts()
+  {static} -DateTime? _parseDateTime()
+}
+
+class "smartparking::utils::themes.dart::AppThemes" {
+  {static} +ThemeData darkTheme
+  {static} +ThemeData lightTheme
+}
+
+"smartparking::utils::themes.dart::AppThemes" o-- "flutter::src::material::theme_data.dart::ThemeData"
+
+class "smartparking::widgets::navigation_bar.dart::NavigationBar" {
+  +int currentIndex
+  +dynamic Function(int) onTap
+  -Widget _buildDynamicButton()
+  -void _showCheckOutConfirmation()
+  -dynamic _performCheckOut()
+  +Widget build()
+}
+
+"smartparking::widgets::navigation_bar.dart::NavigationBar" o-- "null::dynamic Function(int)"
+"flutter::src::widgets::framework.dart::StatelessWidget" <|-- "smartparking::widgets::navigation_bar.dart::NavigationBar"
+
+class "smartparking::widgets::password_field.dart::PasswordField" {
+  +TextEditingController controller
+  +String labelText
+  +void Function(String)? onChanged
+  +String? Function(String?)? validator
+  +_PasswordFieldState createState()
+}
+
+"smartparking::widgets::password_field.dart::PasswordField" o-- "flutter::src::widgets::editable_text.dart::TextEditingController"
+"smartparking::widgets::password_field.dart::PasswordField" o-- "flutter::src::foundation::basic_types.dart::void Function(String)"
+"smartparking::widgets::password_field.dart::PasswordField" o-- "flutter::src::widgets::form.dart::String Function(String)"
+"flutter::src::widgets::framework.dart::StatefulWidget" <|-- "smartparking::widgets::password_field.dart::PasswordField"
+
+class "smartparking::widgets::password_field.dart::_PasswordFieldState" {
+  -bool _obscureText
+  -void _toggleVisibility()
+  +Widget build()
+}
+
+"flutter::src::widgets::framework.dart::State" <|-- "smartparking::widgets::password_field.dart::_PasswordFieldState"
+
+
+@enduml
