@@ -132,19 +132,21 @@ class NavigationBar extends StatelessWidget {
         });
       }
 
-      // Update parking slot state
+      // ✅ Update parking slot state with `databaseChangeTime`
       await slotRef.update({
         'isAvailable': true,
         'reservedBy': null,
+        'databaseChangeTime': ServerValue.timestamp, // 🟡 Add server timestamp
       });
 
-      // Update user state
+      // ✅ Update user state
       await userRef.update({
         'isCheckedIn': false,
         'currentSlot': null,
       });
 
-      print('DEBUG: Parking slot $currentSlot marked as available.');
+      print(
+          'DEBUG: Parking slot $currentSlot marked as available with timestamp.');
       print('DEBUG: User $userId state updated.');
 
       ScaffoldMessenger.of(context).showSnackBar(

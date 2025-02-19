@@ -3,7 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  file_selector_windows
+  awesome_notifications
   firebase_auth
   firebase_core
   permission_handler_windows

@@ -234,6 +234,24 @@ class _ReservationPageState extends State<ReservationPage> {
       return;
     }
 
+    // Combine selectedDate and checkInTime to create a DateTime for validation
+    final now = DateTime.now();
+    final checkInDateTime = DateTime(
+      selectedDate!.year,
+      selectedDate!.month,
+      selectedDate!.day,
+      checkInTime!.hour,
+      checkInTime!.minute,
+    );
+
+    // Validate that the reservation time is in the future
+    if (checkInDateTime.isBefore(now)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Reservation time must be in the future')),
+      );
+      return;
+    }
+
     // Format the date to "Day, DD-MM-YYYY"
     final String formattedDate =
         '${_getDayName(selectedDate!.weekday)}, ${selectedDate!.day.toString().padLeft(2, '0')}-${selectedDate!.month.toString().padLeft(2, '0')}-${selectedDate!.year}';

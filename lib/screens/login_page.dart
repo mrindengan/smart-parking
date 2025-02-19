@@ -47,9 +47,13 @@ class _LoginPageState extends State<LoginPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Login successful!')),
       );
-      Navigator.pushReplacementNamed(
-          context, '/dashboard'); // Navigate to Dashboard
+      if (appState.isAdmin) {
+        Navigator.pushReplacementNamed(context, '/admin-dashboard');
+      } else {
+        Navigator.pushReplacementNamed(context, '/dashboard');
+      }
     } catch (e) {
+      // Handle login errors
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Login failed: ${e.toString()}')),
       );

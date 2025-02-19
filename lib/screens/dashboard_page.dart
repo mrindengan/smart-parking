@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:path_provider/path_provider.dart';
@@ -14,10 +15,14 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   Map<String, dynamic>? activeReservation; // Holds active reservation details
+  Map<String, dynamic>?
+      latestReservation; // Declare it at the top of your Widget class
+
   int availableSlots = 0;
   String? firstName = 'user';
   int occupiedSlots = 0;
   File? profileImage;
+  StreamSubscription<DatabaseEvent>? userSubscription;
   bool showNotification = true; // Controls the notification banner visibility
   int totalSlots = 0;
 
@@ -39,6 +44,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final dbRef = FirebaseDatabase.instance.ref('users/$userId');
 
     dbRef.onValue.listen((event) {
+      if (!mounted) return; // Check if the widget is still mounted
       if (event.snapshot.exists) {
         final data = Map<String, dynamic>.from(event.snapshot.value as Map);
         final fullName = (data['name'] as String?)?.trim() ?? 'User';
@@ -70,31 +76,40 @@ class _DashboardPageState extends State<DashboardPage> {
     final userId = user.uid;
     final userRef = FirebaseDatabase.instance.ref('users/$userId');
 
-    userRef.onValue.listen((event) {
+    userSubscription = userRef.onValue.listen((event) {
+      if (!mounted) return; // Check if the widget is still mounted
       if (event.snapshot.exists) {
         final userData = Map<String, dynamic>.from(event.snapshot.value as Map);
 
-        setState(() {
-          firstName = userData['name']?.split(' ').first ?? 'User';
+        if (mounted) {
+          // ✅ Prevents setState() if widget is disposed
+          setState(() {
+            firstName = userData['name']?.split(' ').first ?? 'User';
 
-          // Explicitly clear activeReservation when isCheckedIn is false
-          if (userData['isCheckedIn'] == true &&
-              userData['currentSlot'] != null) {
-            activeReservation = {
-              'slot': userData['currentSlot'],
-              'status': 'CheckedIn',
-            };
-          } else {
-            activeReservation = null; // Clear active reservation
-          }
-        });
+            // Explicitly clear activeReservation when isCheckedIn is false
+            activeReservation = (userData['isCheckedIn'] == true &&
+                    userData['currentSlot'] != null)
+                ? {'slot': userData['currentSlot'], 'status': 'CheckedIn'}
+                : null;
+          });
+        }
       } else {
-        setState(() {
-          firstName = 'User'; // Default name
-          activeReservation = null; // Clear active reservation
-        });
+        if (mounted) {
+          setState(() {
+            firstName = 'User'; // Default name
+            activeReservation = null; // Clear active reservation
+          });
+        }
       }
     });
+  }
+
+// ✅ Dispose listener properly
+  @override
+  void dispose() {
+    userSubscription
+        ?.cancel(); // Cancel Firebase listener to prevent memory leaks
+    super.dispose();
   }
 
   Future<void> _loadProfileImage() async {
@@ -117,6 +132,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
     // Listen to reservations
     dbRef.child('reservations/$userId').onValue.listen((event) {
+      if (!mounted) return; // Check if the widget is still mounted
       if (event.snapshot.exists) {
         final reservations =
             Map<String, dynamic>.from(event.snapshot.value as Map);
@@ -153,33 +169,42 @@ class _DashboardPageState extends State<DashboardPage> {
           }
         }
 
-        setState(() {
-          activeReservation = active ?? upcoming;
-        });
+        if (mounted) {
+          setState(() {
+            activeReservation = active ?? upcoming;
+          });
+        }
       } else {
-        setState(() {
-          activeReservation = null;
-        });
+        if (mounted) {
+          setState(() {
+            activeReservation = null;
+          });
+        }
       }
     });
 
     // Listen to regular check-in status
     dbRef.child('users/$userId').onValue.listen((event) {
+      if (!mounted) return; // Check if the widget is still mounted
       if (event.snapshot.exists) {
         final userData = Map<String, dynamic>.from(event.snapshot.value as Map);
 
         if (userData['isCheckedIn'] == true &&
             userData['currentSlot'] != null) {
-          setState(() {
-            activeReservation = {
-              'slot': userData['currentSlot'],
-              'status': 'Checked In',
-            };
-          });
+          if (mounted) {
+            setState(() {
+              activeReservation = {
+                'slot': userData['currentSlot'],
+                'status': 'Checked In',
+              };
+            });
+          }
         } else if (activeReservation == null) {
-          setState(() {
-            activeReservation = null; // Clear if no reservation or check-in
-          });
+          if (mounted) {
+            setState(() {
+              activeReservation = null; // Clear if no reservation or check-in
+            });
+          }
         }
       }
     });

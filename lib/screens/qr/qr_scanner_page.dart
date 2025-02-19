@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
 
 class QRScannerPage extends StatefulWidget {
   const QRScannerPage({Key? key}) : super(key: key);
@@ -12,10 +13,25 @@ class QRScannerPage extends StatefulWidget {
 
 class _QRScannerPageState extends State<QRScannerPage> {
   bool isProcessing = false;
+  MobileScannerController scannerController = MobileScannerController();
+  StreamSubscription? _subscription;
+
+  @override
+  void initState() {
+    super.initState();
+    startScanner(); // Start the scanner with a delay
+  }
 
   @override
   void dispose() {
-    // Dispose MobileScanner or camera resources here
+    try {
+      scannerController.stop(); // Stop the scanner
+    } catch (e) {
+      print('Error stopping scanner: $e');
+    }
+    scannerController.dispose(); // Properly dispose of the scanner
+    _subscription
+        ?.cancel(); // Cancel any active listeners to avoid memory leaks
     super.dispose();
   }
 
@@ -29,8 +45,21 @@ class _QRScannerPageState extends State<QRScannerPage> {
     }
   }
 
+  Future<void> startScanner() async {
+    await Future.delayed(Duration(seconds: 1)); // Small delay
+    if (mounted) {
+      try {
+        scannerController.start();
+      } catch (e) {
+        print('Error starting scanner: $e');
+      }
+    }
+  }
+
   Future<void> _processQRCode(String scannedSlot) async {
     try {
+      if (!mounted) return;
+
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         _showError('User not authenticated.');
@@ -41,9 +70,66 @@ class _QRScannerPageState extends State<QRScannerPage> {
       print('Debug: Scanned Slot -> $scannedSlot');
       print('Debug: User ID -> $userId');
 
-      final slotSnapshot = await FirebaseDatabase.instance
-          .ref('parkingSlots/$scannedSlot')
-          .get();
+      // 🔹 Fetch user's active reservation
+      final reservationSnapshot =
+          await FirebaseDatabase.instance.ref('reservations/$userId').get();
+
+      String? reservedSlot;
+      String? matchingReservationId;
+      bool hasActiveReservation = false;
+      final now = DateTime.now();
+
+      if (reservationSnapshot.exists) {
+        final reservations =
+            Map<String, dynamic>.from(reservationSnapshot.value as Map);
+
+        for (final entry in reservations.entries) {
+          final reservation = Map<String, dynamic>.from(entry.value);
+          final checkIn = reservation['checkIn'] as String?;
+          final date = reservation['date'] as String?;
+          final slotId = reservation['slot'];
+          final status = reservation['status'];
+
+          if (slotId == null || checkIn == null || date == null) continue;
+
+          final checkInTime = _parseDateTime(checkIn, date);
+
+          if (status == "Reserved" &&
+              checkInTime != null &&
+              now.isAfter(checkInTime)) {
+            hasActiveReservation = true;
+            reservedSlot = slotId;
+            matchingReservationId = entry.key;
+            break;
+          }
+        }
+      }
+
+      print('Debug: Reserved Slot -> $reservedSlot');
+      print('Debug: Scanned Slot -> $scannedSlot');
+      print('Debug: Matching Reservation ID -> $matchingReservationId');
+
+      // ✅ Reserved users: Allow check-in to reserved slot
+      if (reservedSlot != null &&
+          reservedSlot == scannedSlot &&
+          hasActiveReservation) {
+        print('✅ User is checking into their reserved slot.');
+        await _handleCheckIn(
+          slotId: scannedSlot,
+          userId: userId,
+          isReservedUser: true,
+          reservationId: matchingReservationId,
+        );
+        if (mounted) {
+          Navigator.pop(context);
+        }
+        return;
+      }
+
+      // 🔹 Check slot availability for regular users
+      final slotDataRef =
+          FirebaseDatabase.instance.ref('parkingSlots/$scannedSlot');
+      final slotSnapshot = await slotDataRef.get();
 
       if (!slotSnapshot.exists) {
         _showError('Invalid parking slot.');
@@ -51,89 +137,50 @@ class _QRScannerPageState extends State<QRScannerPage> {
       }
 
       final slotData = Map<String, dynamic>.from(slotSnapshot.value as Map);
-      print('Debug: Slot Data -> $slotData');
-
-      final reservedBy = slotData['reservedBy'] as String?;
       final isAvailable = slotData['isAvailable'] as bool? ?? false;
+      final upcomingReservations =
+          slotData['upcomingReservations'] as Map<dynamic, dynamic>?;
 
-      // Retrieve user data to check for reservations
-      final userSnapshot =
-          await FirebaseDatabase.instance.ref('users/$userId').get();
-      if (!userSnapshot.exists) {
-        _showError('User data not found.');
-        return;
-      }
+      print('Debug: Slot Data -> $slotData');
+      print('Debug: Is Available -> $isAvailable');
 
-      final userData = Map<String, dynamic>.from(userSnapshot.value as Map);
-      final String? reservedSlot = userData['reservedSlot'];
+      // 🔹 Check for upcoming reservations (Regular users only)
+      if (reservedSlot == null && isAvailable && upcomingReservations != null) {
+        for (final reservationEntry in upcomingReservations.entries) {
+          final upcoming = Map<String, dynamic>.from(reservationEntry.value);
+          final checkIn = upcoming['checkIn'] as String?;
+          final date = upcoming['date'] as String?;
 
-      // Check for upcoming reservations
-      final upcomingSnapshot = await FirebaseDatabase.instance
-          .ref('parkingSlots/$scannedSlot/upcomingReservations')
-          .get();
+          if (checkIn == null || date == null) continue;
 
-      bool hasUpcomingReservation = false;
-      if (upcomingSnapshot.exists) {
-        final upcomingReservations =
-            Map<String, dynamic>.from(upcomingSnapshot.value as Map);
+          final upcomingCheckInTime = _parseDateTime(checkIn, date);
 
-        final now = DateTime.now();
-        for (final reservation in upcomingReservations.values) {
-          final checkIn = reservation['checkIn'] as String?;
-          final date = reservation['date'] as String?;
-
-          if (checkIn != null && date != null) {
-            final checkInTime = _parseDateTime(checkIn, date);
-
-            if (checkInTime != null &&
-                now.isAfter(checkInTime.subtract(const Duration(hours: 2))) &&
-                now.isBefore(checkInTime)) {
-              hasUpcomingReservation = true;
-              break;
-            }
-          } else {
-            print(
-                'Debug: Either checkIn or date is null. Skipping reservation.');
+          if (upcomingCheckInTime != null &&
+              now.add(const Duration(hours: 2)).isAfter(upcomingCheckInTime)) {
+            _showError('This slot has an upcoming reservation within 2 hours.');
+            return;
           }
         }
       }
 
-      print('Debug: Reserved By -> $reservedBy');
-      print('Debug: Is Available -> $isAvailable');
-      print('Debug: Has Upcoming Reservation -> $hasUpcomingReservation');
-      print('Debug: User Reserved Slot -> $reservedSlot');
-
-      // Handle check-in logic for reserved users
-      if (reservedSlot != null && reservedSlot == scannedSlot) {
-        if (reservedBy == userId || reservedBy == null) {
-          await _handleCheckIn(
-            slotId: scannedSlot,
-            userId: userId,
-            isReservedUser: true,
-          );
-        } else {
-          _showError('This slot is reserved by another user.');
-        }
-        return;
-      }
-
-      // Handle check-in logic for regular users
-      if (reservedSlot == null && isAvailable && !hasUpcomingReservation) {
+      // ✅ Proceed with regular user check-in
+      if (reservedSlot == null && isAvailable) {
         await _handleCheckIn(
           slotId: scannedSlot,
           userId: userId,
           isReservedUser: false,
         );
+        if (mounted) {
+          Navigator.pop(context);
+        }
         return;
       }
 
-      // Handle invalid scenarios
+      // 🔹 Handle invalid scenarios
       if (reservedSlot != null && reservedSlot != scannedSlot) {
         _showError(
             'Invalid slot. Please check in at your reserved slot: $reservedSlot.');
-      } else if (hasUpcomingReservation) {
-        _showError('This slot has an upcoming reservation.');
-      } else {
+      } else if (!isAvailable && !hasActiveReservation) {
         _showError('This slot is currently occupied.');
       }
     } catch (e, stackTrace) {
@@ -147,71 +194,89 @@ class _QRScannerPageState extends State<QRScannerPage> {
     required String slotId,
     required String userId,
     required bool isReservedUser,
+    String? reservationId,
   }) async {
     try {
       final userRef = FirebaseDatabase.instance.ref('users/$userId');
-      final slotRef = FirebaseDatabase.instance.ref('parkingSlots/$slotId');
       final reservationRef =
-          FirebaseDatabase.instance.ref('reservations/$userId');
+          FirebaseDatabase.instance.ref('reservations/$userId/$reservationId');
 
-      String? reservationId;
+      print('DEBUG: Starting check-in process for slot $slotId');
 
-      // Handle upcoming reservations for reserved users
-      if (isReservedUser) {
-        final upcomingSnapshot =
-            await slotRef.child('upcomingReservations').get();
-        if (upcomingSnapshot.exists) {
-          final upcomingReservations =
-              Map<String, dynamic>.from(upcomingSnapshot.value as Map);
-
-          // Identify the reservation for this user
-          final entry = upcomingReservations.entries.firstWhere(
-            (entry) => entry.value['userId'] == userId,
-            orElse: () => MapEntry('', {}),
-          );
-
-          if (entry.key.isNotEmpty) {
-            reservationId = entry.key;
-
-            // Remove the reservation from upcomingReservations
-            await slotRef.child('upcomingReservations/$reservationId').remove();
-
-            // Update the reservation status to CheckedIn in the reservations node
-            await reservationRef.child(reservationId).update({
-              'status': 'CheckedIn', // Mark the reservation as checked in
-              'checkIn': DateTime.now()
-                  .toIso8601String(), // Log the actual check-in time
-            });
-
-            print(
-                'DEBUG: Reservation $reservationId status updated to CheckedIn.');
-          } else {
-            print('DEBUG: No matching upcoming reservation found.');
-          }
+      // 🔹 Fetch reservation slot (Reserved users only)
+      String? reservationSlotId;
+      if (isReservedUser && reservationId != null) {
+        final reservationSnapshot = await reservationRef.get();
+        if (reservationSnapshot.exists) {
+          final reservationData =
+              Map<String, dynamic>.from(reservationSnapshot.value as Map);
+          reservationSlotId = reservationData['slot'];
         }
       }
 
-      // Update user state
+      print('Debug: Reservation Slot ID -> $reservationSlotId');
+      print('Debug: Scanned Slot ID -> $slotId');
+
+      // ✅ Validate reserved user slot match
+      if (isReservedUser && reservationSlotId != slotId) {
+        _showError(
+            'Invalid slot. Please check in at your reserved slot: $reservationSlotId.');
+        return;
+      }
+
+      // 🔹 Fetch slot data (Reserved or regular users)
+      Map<String, dynamic> slotData = {};
+      if (isReservedUser) {
+        final reservedSlotSnapshot = await reservationRef.get();
+        if (!reservedSlotSnapshot.exists) {
+          _showError('Slot data not found in reservations.');
+          return;
+        }
+        slotData = Map<String, dynamic>.from(reservedSlotSnapshot.value as Map);
+      } else {
+        final slotRef = FirebaseDatabase.instance.ref('parkingSlots/$slotId');
+        final slotSnapshot = await slotRef.get();
+        if (!slotSnapshot.exists) {
+          _showError('Slot data not found in parkingSlots.');
+          return;
+        }
+        slotData = Map<String, dynamic>.from(slotSnapshot.value as Map);
+      }
+
+      final isAvailable = slotData['isAvailable'] as bool? ?? false;
+
+      print('Debug: Slot Data -> $slotData');
+      print('Debug: Is Available -> $isAvailable');
+
+      // ✅ Validate slot availability (Regular users only)
+      if (!isReservedUser && !isAvailable) {
+        _showError('This slot is currently occupied.');
+        return;
+      }
+
+      // ✅ Update User Check-In Status
       await userRef.update({
         'isCheckedIn': true,
         'currentSlot': slotId,
       });
 
-      // Update slot state
+      // ✅ Update Parking Slot with `databaseChangeTime`
+      final slotRef = FirebaseDatabase.instance.ref('parkingSlots/$slotId');
       await slotRef.update({
         'isAvailable': false,
-        'reservedBy': isReservedUser ? null : userId,
+        if (!isReservedUser) 'reservedBy': userId,
+        'databaseChangeTime': ServerValue.timestamp, // 🟡 Add server timestamp
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                '${isReservedUser ? 'Reserved' : 'Regular'} Check-In successful!'),
-          ),
-        );
-        Navigator.pushReplacementNamed(context, '/dashboard');
+      // ✅ Update Reservation Status (For Reserved Users Only)
+      if (isReservedUser && reservationId != null) {
+        await reservationRef.update({
+          'status': 'CheckedIn',
+          'checkIn': DateTime.now().toIso8601String(),
+        });
       }
+
+      print('DEBUG: Check-in successful for slot $slotId with timestamp.');
     } catch (e, stackTrace) {
       print('Error during check-in: $e');
       print('Stack Trace: $stackTrace');
@@ -277,6 +342,7 @@ class _QRScannerPageState extends State<QRScannerPage> {
               ),
               Expanded(
                 child: MobileScanner(
+                  controller: scannerController,
                   onDetect: (capture) async {
                     final List<Barcode> barcodes = capture.barcodes;
 
@@ -286,12 +352,21 @@ class _QRScannerPageState extends State<QRScannerPage> {
 
                     final String? scannedSlot = barcodes.first.rawValue;
                     if (scannedSlot != null) {
-                      await _processQRCode(scannedSlot);
+                      try {
+                        await _processQRCode(scannedSlot);
+                      } catch (e) {
+                        _showError('Error processing QR Code: $e');
+                      }
                     } else {
                       _showError('Invalid QR Code');
                     }
 
-                    setState(() => isProcessing = false);
+                    await Future.delayed(Duration(
+                        milliseconds: 500)); // Delay before allowing next scan
+
+                    if (mounted) {
+                      setState(() => isProcessing = false);
+                    }
                   },
                 ),
               ),

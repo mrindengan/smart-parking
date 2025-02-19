@@ -207,10 +207,13 @@ class _HistoryPageState extends State<HistoryPage> {
               children: [
                 const FaIcon(FontAwesomeIcons.calendar, color: Colors.blue),
                 const SizedBox(width: 8),
-                Text(
-                  'Date: ${history['date']}',
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Text(
+                    'Date: ${history['date']}',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
@@ -221,11 +224,14 @@ class _HistoryPageState extends State<HistoryPage> {
                 const FaIcon(FontAwesomeIcons.parking,
                     color: Colors.blueAccent),
                 const SizedBox(width: 8),
-                Text(
-                  'Slot: ${_getReadableSlotName(history['slot'])}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Text(
+                    'Slot: ${_getReadableSlotName(history['slot'])}',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
@@ -236,8 +242,14 @@ class _HistoryPageState extends State<HistoryPage> {
                 children: [
                   const Icon(Icons.access_time, color: Colors.orange),
                   const SizedBox(width: 8),
-                  Text('Time: ${history['checkIn']} - ${history['checkOut']}',
-                      style: const TextStyle(fontSize: 16)),
+                  Expanded(
+                    child: Text(
+                      'Time: ${history['checkIn']} - ${history['checkOut']}',
+                      style: const TextStyle(fontSize: 16),
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                    ),
+                  ),
                 ],
               ),
             const SizedBox(height: 8),
@@ -245,9 +257,12 @@ class _HistoryPageState extends State<HistoryPage> {
               children: [
                 const Icon(Icons.timer, color: Colors.red),
                 const SizedBox(width: 8),
-                Text(
-                  'Duration: ${history['duration'] ?? 'N/A'}',
-                  style: const TextStyle(fontSize: 16),
+                Expanded(
+                  child: Text(
+                    'Duration: ${history['duration'] ?? 'N/A'}',
+                    style: const TextStyle(fontSize: 16),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),

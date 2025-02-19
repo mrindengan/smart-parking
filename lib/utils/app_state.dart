@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'dart:io';
+import 'package:smartparking/utils/notifications_manager.dart';
 
 class AppState with ChangeNotifier {
   AppState() {
@@ -16,7 +17,7 @@ class AppState with ChangeNotifier {
 
   // User State
   User? currentUser;
-
+  bool isAdmin = false; // New property for admin flag //
   bool isCheckIn = false; // Track Check-In status
   bool isLoggedIn = false;
   int? lastUpdated; // Store the most recent update timestamp
@@ -71,72 +72,6 @@ class AppState with ChangeNotifier {
     print('Database isCheckedIn updated to: $status');
   }
 
-  /// Handles the check-out logic for a user
-  Future<void> checkOut(String reservationId, String slotId) async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) {
-        throw Exception('User not authenticated.');
-      }
-
-      final String userId = user.uid;
-
-      // Fetch the reservation data
-      final reservationSnapshot =
-          await _dbRef.child('reservations/$userId/$reservationId').get();
-
-      if (!reservationSnapshot.exists) {
-        throw Exception('Reservation not found.');
-      }
-
-      final reservationData =
-          Map<String, dynamic>.from(reservationSnapshot.value as Map);
-
-      // Parse reservation times for validation
-      final String? checkInTime = reservationData['checkIn'] as String?;
-      final String? reservationDate = reservationData['date'] as String?;
-      final DateTime? parsedCheckIn =
-          _parseDateTime(checkInTime, reservationDate);
-
-      if (parsedCheckIn == null || DateTime.now().isBefore(parsedCheckIn)) {
-        throw Exception(
-            'Invalid check-in time or reservation is not yet active.');
-      }
-
-      // Move reservation to history
-      await _dbRef.child('history/$userId/$reservationId').set({
-        ...reservationData,
-        'status': 'Checked Out',
-        'checkOut': DateTime.now().toIso8601String(),
-      });
-
-      // Remove reservation from active reservations
-      await _dbRef.child('reservations/$userId/$reservationId').remove();
-
-      // Update the parking slot to be available
-      await _dbRef.child('parkingSlots/$slotId').update({
-        'isAvailable': true,
-        'reservedBy': null,
-      });
-
-      // Update user's check-in status
-      await _dbRef.child('users/$userId').update({
-        'isCheckedIn': false,
-        'currentSlot': null,
-      });
-
-      print('Check-Out successful for reservation: $reservationId');
-      try {
-        notifyListeners();
-      } catch (notifyError) {
-        print('Error notifying listeners: $notifyError');
-      }
-    } catch (e) {
-      print('Error during check-out: $e');
-      throw Exception('Failed to complete check-out: $e');
-    }
-  }
-
   // Register Method
   Future<void> register({
     required String name,
@@ -180,13 +115,19 @@ class AppState with ChangeNotifier {
 
       print('User signed in successfully with UID: $uid');
 
+      // Fetch user data from Realtime Database
       final snapshot = await _dbRef.child('users/$uid').get();
       if (snapshot.exists) {
-        print('User data fetched: ${snapshot.value}');
+        final userData = Map<String, dynamic>.from(snapshot.value as Map);
+        print('User data fetched: $userData');
+        // Check if the user has an "isAdmin" flag set to true
+        isAdmin = userData['isAdmin'] == true;
       } else {
         print('No user data found for UID: $uid');
         throw Exception('No user data found in database');
       }
+      // Notify listeners if needed
+      notifyListeners();
     } catch (e) {
       print('Error during login: ${e.toString()}');
       throw Exception('Login failed: ${e.toString()}');
@@ -237,33 +178,49 @@ class AppState with ChangeNotifier {
       final reservations =
           Map<String, dynamic>.from(event.snapshot.value as Map);
       print('Reservations fetched: $reservations');
-      _updateSlotsBasedOnReservations(reservations);
+      _processReservationsAndUpdateSlots(reservations);
     }, onError: (error) {
       print('Error listening to reservation data: $error');
     });
   }
 
-  // Periodic Updates for Slots
   void _startPeriodicSlotUpdates() {
     print('Starting periodic slot updates...');
     periodicTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
       print('Running periodic slot update...');
+
+      // Fetch reservations from the database
       final snapshot = await _dbRef.child('reservations').get();
       if (snapshot.exists) {
         final reservations = Map<String, dynamic>.from(snapshot.value as Map);
         print('Periodic reservations fetched: $reservations');
-        _updateSlotsBasedOnReservations(reservations);
+        // Call the notification scenarios
+        NotificationManager.handleCheckInReminders(reservations);
+        NotificationManager.handleCheckOutReminders(reservations);
+        await NotificationManager.handleMissedCheckIns(
+          reservations,
+          _archiveReservationAndUpdateSlot, // AppState method for database updates
+        );
+        await NotificationManager.handleOverdueCheckOuts(
+          reservations,
+          _archiveReservationAndUpdateSlot, // AppState method for database updates
+        );
+        _processReservationsAndUpdateSlots(reservations);
       } else {
         print('No reservations found during periodic update.');
       }
     });
   }
 
-  void _updateSlotsBasedOnReservations(Map<String, dynamic> reservations) {
+  Future<void> _processReservationsAndUpdateSlots(
+      Map<String, dynamic> reservations) async {
     final now = DateTime.now();
-    final Map<String, bool> slotStatus = {};
+    final Map<String, bool> slotStatus = {}; // Track slot availability
+    final Map<String, String?> checkedInUsers =
+        {}; // Track users who checked in
 
     for (final userEntry in reservations.entries) {
+      final userId = userEntry.key; // Extract userId
       final userReservations = Map<String, dynamic>.from(userEntry.value);
 
       for (final entry in userReservations.entries) {
@@ -272,36 +229,49 @@ class AppState with ChangeNotifier {
 
         if (slotId == null || slotId.runtimeType != String) {
           print('Invalid slotId for reservation: $reservation');
-          continue; // Skip processing if slotId is invalid
+          continue;
         }
 
         try {
-          // Parse reservation times
-          final checkInTime =
-              _parseTime(reservation['checkIn'], reservation['date']);
-          final checkOutTime =
-              _parseTime(reservation['checkOut'], reservation['date']);
+          final DateTime? checkInTime =
+              _parseDateTime(reservation['checkIn'], reservation['date']);
+          final DateTime? checkOutTime =
+              _parseDateTime(reservation['checkOut'], reservation['date']);
 
-          print('-----------------------');
+          if (checkInTime == null || checkOutTime == null) {
+            print(
+                'Skipping reservation with invalid check-in or check-out time.');
+            continue;
+          }
+
           print('Processing reservation: ${entry.key}');
           print('Slot: $slotId');
           print('Check-In: $checkInTime, Check-Out: $checkOutTime');
           print('Current Time: $now');
-          print('-----------------------');
 
-          // **Slot Availability Logic**
+          // ✅ Check if user is already checked in
+          final userSnapshot = await FirebaseDatabase.instance
+              .ref('users/$userId/isCheckedIn')
+              .get();
+          final bool isUserCheckedIn =
+              userSnapshot.exists && userSnapshot.value == true;
+
+          if (isUserCheckedIn) {
+            checkedInUsers[slotId] = userId;
+            print('Slot $slotId is occupied by checked-in user: $userId');
+            continue; // Skip further processing for this slot
+          }
+
+          // ✅ Determine slot availability
           if (now.isAtSameMomentAs(checkInTime) ||
               (now.isAfter(checkInTime) && now.isBefore(checkOutTime))) {
             slotStatus[slotId] = true; // Mark slot as occupied
-            print(
-                'Slot $slotId is marked as occupied (Check-In Time Reached).');
+            print('Slot $slotId is marked as occupied.');
           } else if (now.isAfter(checkOutTime)) {
-            // Past Reservation Logic
             slotStatus[slotId] = false; // Mark slot as available
-            print('Slot $slotId is marked as available (Past Reservation).');
+            print('Slot $slotId is marked as available.');
           } else {
-            // Future Reservation Logic
-            print('Slot $slotId is reserved for the future. Ignored.');
+            print('Slot $slotId is reserved for the future.');
           }
         } catch (e) {
           print('Error processing reservation for slot $slotId: $e');
@@ -309,76 +279,94 @@ class AppState with ChangeNotifier {
       }
     }
 
-    // Update Slot Availability in Database
+    // ✅ Update slot availability with server timestamp
     for (final slotEntry in slotStatus.entries) {
       final slotId = slotEntry.key;
       final isOccupied = slotEntry.value;
 
-      print('Updating slot $slotId in the database...');
-      _updateSlotAvailability(slotId, isOccupied).then((_) {
-        print('Slot $slotId updated: isAvailable=${!isOccupied}');
-      }).catchError((e) {
-        print('Error updating slot $slotId: $e');
-      });
+      try {
+        await _dbRef.child('parkingSlots/$slotId').update({
+          'isAvailable': !isOccupied,
+          'reservedBy': checkedInUsers.containsKey(slotId)
+              ? checkedInUsers[slotId]
+              : null,
+          'databaseChangeTime':
+              ServerValue.timestamp, // 🟡 Add server timestamp
+        });
+        print(
+            'Slot $slotId updated: isAvailable=${!isOccupied}, timestamp recorded.');
+      } catch (e) {
+        print('Error updating slot availability for Slot $slotId: $e');
+      }
     }
   }
 
-  // Parse Time from Reservation Data
-  DateTime _parseTime(String time, String date) {
-    final dateParts = date.split('-');
-    final timeParts = time.split(':');
-
-    final hour = int.parse(timeParts[0]);
-    final minute = int.parse(timeParts[1].split(' ')[0]);
-    final isPM = time.contains('PM');
-    final parsedHour = isPM ? (hour % 12) + 12 : hour;
-
-    return DateTime(
-      int.parse(dateParts[2]),
-      int.parse(dateParts[1]),
-      int.parse(dateParts[0]),
-      parsedHour,
-      minute,
-    );
-  }
-
-  // Update Slot Availability in Firebase
-  Future<void> _updateSlotAvailability(String slotId, bool isOccupied) async {
+  Future<void> _archiveReservationAndUpdateSlot(
+    String userId,
+    String reservationId,
+    String slotId,
+    String status,
+  ) async {
     try {
+      // ✅ Archive Reservation to History
+      final reservationSnapshot =
+          await _dbRef.child('reservations/$userId/$reservationId').get();
+
+      if (reservationSnapshot.exists) {
+        final reservationData =
+            Map<String, dynamic>.from(reservationSnapshot.value as Map);
+
+        await _dbRef.child('history/$userId/$reservationId').set({
+          ...reservationData,
+          'status': status,
+          'updatedAt': DateTime.now().toIso8601String(),
+        });
+
+        // ✅ Remove from active reservations
+        await _dbRef.child('reservations/$userId/$reservationId').remove();
+
+        print(
+            'Reservation $reservationId archived for user $userId with status: $status.');
+      } else {
+        print('No reservation found for ID: $reservationId and user: $userId.');
+      }
+
+      // ✅ Update Parking Slot with Server Timestamp
       await _dbRef.child('parkingSlots/$slotId').update({
-        'isAvailable': !isOccupied,
-        'reservedBy': isOccupied ? currentUser?.uid : null,
+        'isAvailable': true,
+        'reservedBy': null,
+        'databaseChangeTime': ServerValue.timestamp, // 🟡 Add server timestamp
       });
+
       print(
-          'Slot $slotId updated: isAvailable=${!isOccupied}, reservedBy=${isOccupied ? currentUser?.uid : null}');
+          'Slot $slotId marked as available with server timestamp and cleared of reservations.');
     } catch (e) {
-      print('Error updating slot availability for Slot $slotId: $e');
+      print('Error archiving reservation and updating slot: $e');
     }
   }
-}
 
-DateTime? _parseDateTime(String? time, String? date) {
-  if (time == null || date == null) {
-    print('DEBUG: Invalid time or date. Returning null.');
-    return null;
-  }
+  DateTime? _parseDateTime(String? time, String? date) {
+    if (time == null || date == null) {
+      return null;
+    }
 
-  try {
-    final dateParts = date.split('-'); // Format: DD-MM-YYYY
-    final timeParts = time.split(':'); // Format: HH:MM AM/PM
-    final hour = int.parse(timeParts[0]);
-    final minute = int.parse(timeParts[1].split(' ')[0]);
-    final isPM = time.toUpperCase().contains('PM');
+    try {
+      final dateParts = date.split('-'); // Format: DD-MM-YYYY
+      final timeParts = time.split(':'); // Format: HH:MM AM/PM
+      final hour = int.parse(timeParts[0]);
+      final minute = int.parse(timeParts[1].split(' ')[0]);
+      final isPM = time.toUpperCase().contains('PM');
 
-    return DateTime(
-      int.parse(dateParts[2]), // Year
-      int.parse(dateParts[1]), // Month
-      int.parse(dateParts[0]), // Day
-      isPM ? (hour % 12) + 12 : hour,
-      minute,
-    );
-  } catch (e) {
-    print('Error parsing date/time: $e');
-    return null;
+      return DateTime(
+        int.parse(dateParts[2]), // Year
+        int.parse(dateParts[1]), // Month
+        int.parse(dateParts[0]), // Day
+        isPM ? (hour % 12) + 12 : hour,
+        minute,
+      );
+    } catch (e) {
+      print('Error parsing date/time: $e');
+      return null;
+    }
   }
 }

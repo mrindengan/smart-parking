@@ -412,12 +412,17 @@ class _ActiveReservationsPageState extends State<ActiveReservationsPage> {
             ),
             const SizedBox(height: 8),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Icon(Icons.access_time, color: Colors.orange),
                 const SizedBox(width: 8),
-                Text(
-                  'Time: ${reservation['checkIn']} - ${reservation['checkOut']}',
-                  style: const TextStyle(fontSize: 16),
+                Flexible(
+                  child: Text(
+                    'Time: ${reservation['checkIn']} - ${reservation['checkOut']}',
+                    style: const TextStyle(fontSize: 16),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                  ),
                 ),
               ],
             ),
